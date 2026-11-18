@@ -1,0 +1,26 @@
+# Android / Gradle
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.apk
+*.jks
+*.keystore
+
+# Pipeline outputs
+out/
+extracts/
+data/sources/
+*.osm.pbf
+
+# Test artifacts
+test/packs/
+test/shots/
+test/shots-pipeline/
+test/shots-linux/
+
+# Misc
+__pycache__/
+.DS_Store
+.idea/
+*.iml

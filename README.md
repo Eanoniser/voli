@@ -26,7 +26,11 @@ The name **Voli** comes from *воля* (volya, Ukrainian for freedom) and also 
 - **Waypoints**: save where you are (camp, car, spring) and return later.
 - **Accessibility**: black and white by default, large buttons drawn with a fine pen line, high contrast, a maximum-contrast mode, adjustable text size, reduced motion, and a colour-blind-safe palette where every status also has an icon or pattern.
 - **Complete settings** (Ajustes): accessibility, map, navigation, route safety, trail, storage (Wi-Fi-only downloads), privacy and about.
-- **Offline search** for cities, neighbourhoods, streets and points of interest.
+- **Offline search** for cities, neighbourhoods, streets, house numbers (OpenStreetMap addresses), points of interest and millions of businesses and services from Overture Maps:
+  - tolerates typos ("padria" finds "padaria");
+  - Home, Work and recent places;
+  - one-tap shortcuts for the nearest fuel stations, pharmacies, hospitals, markets, police, water and shelters;
+  - an offline 3D view (tilted, slowly orbiting) of any place.
 
 ## Linux and Raspberry Pi
 
@@ -99,6 +103,8 @@ Without them, the workflow builds an installable debug APK.
 | OpenStreetMap data | ODbL 1.0, attribution required | Map, routing, search |
 | OpenMapTiles schema | CC-BY 4.0, attribution required | Vector tile layers |
 | Copernicus DEM GLO-90 | Free incl. commercial use, attribution required | Terrain |
+| Overture Maps places | CDLA Permissive 2.0 / Apache 2.0 (per source), attribution | Businesses and services for search and the essentials layer (no OSM data inside) |
+| DuckDB | MIT | Build-time only: reads Overture places |
 | Natural Earth | Public domain | Built-in world map (globe, countries, Brazilian states, cities) in `web/data/world` |
 | MapLibre GL JS | BSD-3-Clause | Map rendering (bundled in `web/vendor`) |
 | Noto Sans | SIL OFL 1.1 | Map labels (bundled in `web/fonts`) |
