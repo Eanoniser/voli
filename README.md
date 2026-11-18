@@ -68,7 +68,7 @@ Voli does **not** copy data from Google Maps or Waze, because their terms forbid
 3. Run **Actions → Build map packs → Run workflow**.
    - Leave "states" empty to build all 27 states, which takes a few hours.
    - Or type a few UFs (e.g. `sp,rj`) to try it first.
-4. Run **Actions → Build Android APK → Run workflow**, or simply push to `main`.
+4. Run **Actions → Build apps (Android + Linux) → Run workflow**, or simply push to `main`.
    - The APK appears in the `app` release.
    - The APK automatically downloads maps from your repository's `maps` release.
 5. Install `voli.apk` on the phone. Open **Mapas**, load the list and download your state over Wi-Fi.
