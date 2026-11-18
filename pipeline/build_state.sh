@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build one state's map pack from an OSM extract.
-# Usage: pipeline/build_state.sh <uf> <state.osm.pbf> <osm-date-iso> <out-dir>
+# Usage: pipeline/build_state.sh <uf> <state.osm.pbf> <osm-date-iso> <out-dir> [overture.places.jsonl.gz]
 # Needs: osmium-tool, java 21, planetiler.jar (PLANETILER env), python3 with numpy/osmium/pmtiles/pillow/gdal.
 set -euo pipefail
 
@@ -8,6 +8,8 @@ UF="$1"
 OSM="$2"
 OSM_DATE="$3"
 OUT="$(mkdir -p "$4" && cd "$4" && pwd)"
+PLACES="${5:-}"
+if [ -n "$PLACES" ] && [ -f "$PLACES" ]; then PLACES="$(cd "$(dirname "$PLACES")" && pwd)/$(basename "$PLACES")"; else PLACES=""; fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
 WORK="$(mktemp -d)"
@@ -29,7 +31,7 @@ osmium tags-filter "$OSM" w/highway w/route=ferry -o "$WORK/roads-raw.pbf" --ove
 osmium add-locations-to-ways "$WORK/roads-raw.pbf" -o "$WORK/roads.pbf" --overwrite
 echo "== places and points of interest"
 osmium tags-filter "$OSM" \
-  nwr/place nwr/healthcare \
+  nwr/place nwr/healthcare nwr/addr:housenumber \
   nwr/amenity=drinking_water,water_point,hospital,clinic,doctors,pharmacy,fuel,police,fire_station,shelter \
   nwr/natural=spring nwr/man_made=water_tap,water_well \
   nwr/tourism=alpine_hut,wilderness_hut nwr/shop=supermarket \
@@ -37,7 +39,7 @@ osmium tags-filter "$OSM" \
 osmium add-locations-to-ways "$WORK/poi-raw.pbf" -o "$WORK/poi.pbf" --overwrite
 
 echo "== routing graph + search index"
-python3 "$HERE/build_index.py" "$WORK/roads.pbf" "$WORK/poi.pbf" "$OUT/$UF"
+python3 "$HERE/build_index.py" "$WORK/roads.pbf" "$WORK/poi.pbf" "$OUT/$UF" "$PLACES"
 
 echo "== vector tiles (Planetiler, OpenMapTiles schema)"
 java -Xmx"$JAVA_MEM" -jar "$PLANETILER" \

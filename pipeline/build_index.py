@@ -14,6 +14,7 @@ Usage: build_index.py roads.pbf poi.pbf out_prefix
 import gzip
 import json
 import math
+import os
 import re
 import struct
 import sys
@@ -184,8 +185,16 @@ class PoiHandler(osmium.SimpleHandler):
         super().__init__()
         self.places = []
         self.pois = []
+        self.addresses = []  # [street, housenumber, lon, lat]
 
     def _add(self, tags, lon, lat):
+        number = tags.get("addr:housenumber")
+        street = tags.get("addr:street") or tags.get("addr:place")
+        if number and street and len(number) <= 12:
+            for num in number.replace(";", ",").split(",")[:4]:
+                num = num.strip()
+                if num:
+                    self.addresses.append([street.strip(), num, round(lon, 6), round(lat, 6)])
         place = tags.get("place")
         name = tags.get("name:pt") or tags.get("name") or ""
         if place in PLACE_KINDS and name:
@@ -199,7 +208,7 @@ class PoiHandler(osmium.SimpleHandler):
             self._add(n.tags, n.location.lon, n.location.lat)
 
     def way(self, w):
-        if not (w.tags.get("place") in PLACE_KINDS or poi_category(w.tags)):
+        if not (w.tags.get("place") in PLACE_KINDS or poi_category(w.tags) or "addr:housenumber" in w.tags):
             return
         xs, ys = [], []
         try:
@@ -363,7 +372,7 @@ def write_graph(g, path):
         f.write(bytes(out))
 
 
-def build_search(g, places, pois, path):
+def build_search(g, places, pois, path, biz=(), addresses=()):
     # Streets: one entry per (name, ~2 km cell), labelled with the nearest town.
     towns = [p for p in places if p[1] in ("city", "town", "village", "suburb", "hamlet")]
     cities = sorted({p[0] for p in towns})
@@ -404,14 +413,88 @@ def build_search(g, places, pois, path):
     street_rows = []
     for nm, lon, lat in streets.values():
         street_rows.append([nm, lon, lat, nearest_town(lon, lat)])
-    data = {"version": 1, "cities": cities, "places": places, "streets": street_rows, "pois": pois}
+    # Businesses are stored column by column (one joined string of names + integer arrays):
+    # far smaller to parse and to keep in a phone's memory than one object per place.
+    labels, label_idx = [], {}
+    bn, bx, by, bl, bt = [], [], [], [], []
+    for name, lon, lat, label in sorted(biz, key=lambda r: (round(r[2], 1), round(r[1], 1))):
+        if label not in label_idx:
+            label_idx[label] = len(labels)
+            labels.append(label)
+        bn.append(name.replace("\n", " "))
+        bx.append(round(lon * 1e5))
+        by.append(round(lat * 1e5))
+        bl.append(label_idx[label])
+        bt.append(nearest_town(lon, lat))
+    biz_cols = {"n": "\n".join(bn), "x": bx, "y": by, "c": bl, "l": labels, "t": bt}
+    # House numbers (OpenStreetMap addr:*), column by column, sorted by street then number.
+    streets_list, street_idx = [], {}
+    ai, an, ax, ay, at = [], [], [], [], []
+    seen_addr = set()
+    for street, num, lon, lat in sorted(addresses, key=lambda r: (r[0], r[1])):
+        key = (street, num, round(lon, 4), round(lat, 4))
+        if key in seen_addr:
+            continue
+        seen_addr.add(key)
+        if street not in street_idx:
+            street_idx[street] = len(streets_list)
+            streets_list.append(street)
+        ai.append(street_idx[street])
+        an.append(num.replace("\n", " "))
+        ax.append(round(lon * 1e5))
+        ay.append(round(lat * 1e5))
+        at.append(nearest_town(lon, lat))
+    addr_cols = {"s": streets_list, "i": ai, "n": "\n".join(an), "x": ax, "y": ay, "t": at}
+    biz_rows = bn
+    data = {"version": 4, "cities": cities, "places": places, "streets": street_rows, "pois": pois, "biz": biz_cols,
+            "addr": addr_cols}
     with gzip.open(path, "wt", encoding="utf-8", compresslevel=6) as f:
         json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
-    print(f"  search: places={len(places):,} streets={len(street_rows):,} pois={len(pois):,}", flush=True)
+    print(f"  search: places={len(places):,} streets={len(street_rows):,} pois={len(pois):,} businesses={len(biz_rows):,} addresses={len(ai):,}", flush=True)
+
+
+def _words(name):
+    import unicodedata
+    t = unicodedata.normalize("NFD", name or "").encode("ascii", "ignore").decode().lower()
+    return {w for w in re.findall(r"[a-z0-9]+", t) if len(w) >= 4}
+
+
+def load_overture(path, osm_pois):
+    """Overture places: essential ones join the POI layer unless they duplicate an OSM POI
+    (same category, closer than 25 m, or closer than 80 m with a shared name word);
+    every named place joins the search index."""
+    if not path or not os.path.isfile(path):
+        return [], []
+    cell = 0.001  # ~110 m
+    grid = {}
+    for cat, lon, lat, name in osm_pois:
+        grid.setdefault((cat, int(lon / cell), int(lat / cell)), []).append((lon, lat, _words(name)))
+
+    def duplicate(key, lon, lat, name):
+        cx, cy = int(lon / cell), int(lat / cell)
+        words = _words(name)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for olon, olat, owords in grid.get((key, cx + dx, cy + dy), ()):
+                    d = haversine(lat, lon, olat, olon)
+                    if d < 25 or (d < 80 and words & owords):
+                        return True
+        return False
+
+    extra_pois, biz = [], []
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        for line in f:
+            name, lon, lat, key, basic, _conf = json.loads(line)
+            biz.append([name, lon, lat, basic])
+            if key and not duplicate(key, lon, lat, name):
+                grid.setdefault((key, int(lon / cell), int(lat / cell)), []).append((lon, lat, _words(name)))
+                extra_pois.append([key, lon, lat, name])
+    return extra_pois, biz
 
 
 def main():
     roads, poi, out = sys.argv[1], sys.argv[2], sys.argv[3]
+    overture = sys.argv[4] if len(sys.argv) > 4 else None
     print("Reading roads…", flush=True)
     rh = RoadHandler()
     rh.apply_file(roads, locations=False)
@@ -420,7 +503,10 @@ def main():
     print("Reading places and POIs…", flush=True)
     ph = PoiHandler()
     ph.apply_file(poi, locations=False)
-    build_search(g, ph.places, ph.pois, out + ".search.json.gz")
+    extra_pois, biz = load_overture(overture, ph.pois)
+    if overture:
+        print(f"  overture: {len(biz):,} places, {len(extra_pois):,} added to the essentials layer", flush=True)
+    build_search(g, ph.places, ph.pois + extra_pois, out + ".search.json.gz", biz, ph.addresses)
 
 
 if __name__ == "__main__":

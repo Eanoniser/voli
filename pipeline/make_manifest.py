@@ -15,7 +15,7 @@ for path in sorted(glob.glob(os.path.join(src, "*.release.json"))):
 manifest = {
     "version": 1,
     "generated": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
-    "attribution": "© OpenStreetMap contributors (ODbL), © OpenMapTiles, Copernicus DEM GLO-90 © DLR e.V. / Airbus, ESA",
+    "attribution": "© OpenStreetMap contributors (ODbL), © OpenMapTiles, Overture Maps Foundation, Copernicus DEM GLO-90 © DLR e.V. / Airbus, ESA",
     "states": states,
 }
 json.dump(manifest, open(out, "w"), ensure_ascii=False, indent=1)
