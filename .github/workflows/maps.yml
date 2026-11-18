@@ -1,0 +1,146 @@
+# Builds fresh offline map packs for every Brazilian state from OpenStreetMap once a week
+# and publishes them to the "maps" GitHub release, where the app downloads them.
+name: Build map packs
+
+on:
+  schedule:
+    - cron: "17 4 * * 1" # every Monday 04:17 UTC
+  workflow_dispatch:
+    inputs:
+      states:
+        description: "Comma-separated UFs to build (empty = all), e.g. sp,rj"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: maps
+  cancel-in-progress: false
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      osm_date: ${{ steps.date.outputs.osm_date }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install osmium-tool
+        run: sudo apt-get update && sudo apt-get install -y osmium-tool
+
+      - name: Download Brazil from Geofabrik
+        run: curl -fSL --retry 5 -o brazil.osm.pbf https://download.geofabrik.de/south-america/brazil-latest.osm.pbf
+
+      - id: date
+        name: Read OSM data date
+        run: |
+          d=$(osmium fileinfo -g header.option.osmosis_replication_timestamp brazil.osm.pbf || true)
+          [ -z "$d" ] && d=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "osm_date=$d" >> "$GITHUB_OUTPUT"
+          echo "OSM data from $d"
+
+      - id: matrix
+        name: Pick states and cut extracts
+        env:
+          STATES: ${{ github.event.inputs.states }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+          st = json.load(open("web/data/states.json"))["states"]
+          want = [s.strip().lower() for s in os.environ.get("STATES", "").split(",") if s.strip()]
+          if want:
+              st = [s for s in st if s["uf"] in want]
+          m = 0.15
+          cfg = {"directory": "extracts", "extracts": [
+              {"output": f'{s["uf"]}.osm.pbf', "bbox": [s["bbox"][0] - m, s["bbox"][1] - m, s["bbox"][2] + m, s["bbox"][3] + m]}
+              for s in st]}
+          json.dump(cfg, open("extracts.json", "w"))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("matrix=" + json.dumps([s["uf"] for s in st]) + "\n")
+          EOF
+          mkdir -p extracts
+          osmium extract -c extracts.json -s complete_ways --overwrite brazil.osm.pbf
+          ls -la extracts
+
+      - name: Ensure the "maps" release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view maps >/dev/null 2>&1 || gh release create maps --title "Map packs" --latest=false \
+            --notes "Offline map packs for Voli, rebuilt weekly from OpenStreetMap. © OpenStreetMap contributors (ODbL), © OpenMapTiles, Copernicus DEM GLO-90 © DLR e.V. / Airbus, ESA."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: osm-extracts
+          path: extracts/
+          retention-days: 1
+          compression-level: 0
+
+  build:
+    needs: extract
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        uf: ${{ fromJson(needs.extract.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osmium-tool gdal-bin python3-gdal python3-numpy python3-pil
+          python3 -m pip install --break-system-packages "osmium>=3.7" "pmtiles>=3.4"
+
+      - name: Download Planetiler
+        run: curl -fSL --retry 5 -o planetiler.jar https://github.com/onthegomap/planetiler/releases/latest/download/planetiler.jar
+
+      - name: Cache Planetiler sources (water polygons, Natural Earth)
+        uses: actions/cache@v4
+        with:
+          path: data/sources
+          key: planetiler-sources-${{ github.run_id }}
+          restore-keys: planetiler-sources-
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: osm-extracts
+          path: extracts
+
+      - name: Build pack
+        env:
+          PLANETILER: planetiler.jar
+          PLANETILER_SOURCES: data/sources
+          JAVA_MEM: 8g
+        run: bash pipeline/build_state.sh "${{ matrix.uf }}" "extracts/${{ matrix.uf }}.osm.pbf" "${{ needs.extract.outputs.osm_date }}" out
+
+      - name: Publish to the "maps" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          uf="${{ matrix.uf }}"
+          gh release upload maps --clobber out/$uf.pmtiles out/$uf-terrain.pmtiles out/$uf.route.gz out/$uf.search.json.gz out/$uf.release.json
+
+  manifest:
+    needs: build
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild manifest.json
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p rel
+          gh release download maps -p "*.release.json" -D rel --clobber
+          python3 pipeline/make_manifest.py rel manifest.json
+          gh release upload maps --clobber manifest.json
