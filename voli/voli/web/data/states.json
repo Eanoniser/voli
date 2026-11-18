@@ -1,0 +1,32 @@
+{
+  "_comment": "Brazilian states (UF). bbox = [west, south, east, north] in degrees. region = Geofabrik sub-region used as the OSM source.",
+  "states": [
+    {"uf": "ac", "name": "Acre", "region": "norte", "bbox": [-74.0, -11.2, -66.6, -7.1]},
+    {"uf": "al", "name": "Alagoas", "region": "nordeste", "bbox": [-38.3, -10.6, -35.1, -8.8]},
+    {"uf": "ap", "name": "Amapá", "region": "norte", "bbox": [-54.9, -1.3, -49.8, 4.5]},
+    {"uf": "am", "name": "Amazonas", "region": "norte", "bbox": [-73.8, -9.9, -56.1, 2.3]},
+    {"uf": "ba", "name": "Bahia", "region": "nordeste", "bbox": [-46.7, -18.4, -37.3, -8.5]},
+    {"uf": "ce", "name": "Ceará", "region": "nordeste", "bbox": [-41.5, -7.9, -37.2, -2.7]},
+    {"uf": "df", "name": "Distrito Federal", "region": "centro-oeste", "bbox": [-48.3, -16.06, -47.3, -15.5]},
+    {"uf": "es", "name": "Espírito Santo", "region": "sudeste", "bbox": [-41.9, -21.3, -39.7, -17.9]},
+    {"uf": "go", "name": "Goiás", "region": "centro-oeste", "bbox": [-53.25, -19.5, -45.9, -12.4]},
+    {"uf": "ma", "name": "Maranhão", "region": "nordeste", "bbox": [-48.8, -10.3, -41.8, -1.0]},
+    {"uf": "mt", "name": "Mato Grosso", "region": "centro-oeste", "bbox": [-61.6, -18.05, -50.2, -7.35]},
+    {"uf": "ms", "name": "Mato Grosso do Sul", "region": "centro-oeste", "bbox": [-58.2, -24.07, -50.9, -17.2]},
+    {"uf": "mg", "name": "Minas Gerais", "region": "sudeste", "bbox": [-51.05, -22.93, -39.85, -14.23]},
+    {"uf": "pa", "name": "Pará", "region": "norte", "bbox": [-58.9, -9.9, -46.0, 2.7]},
+    {"uf": "pb", "name": "Paraíba", "region": "nordeste", "bbox": [-38.8, -8.4, -34.7, -6.0]},
+    {"uf": "pr", "name": "Paraná", "region": "sul", "bbox": [-54.62, -26.72, -48.02, -22.52]},
+    {"uf": "pe", "name": "Pernambuco", "region": "nordeste", "bbox": [-41.4, -9.5, -34.8, -7.2]},
+    {"uf": "pi", "name": "Piauí", "region": "nordeste", "bbox": [-46.0, -10.95, -40.35, -2.7]},
+    {"uf": "rj", "name": "Rio de Janeiro", "region": "sudeste", "bbox": [-44.9, -23.37, -40.96, -20.76]},
+    {"uf": "rn", "name": "Rio Grande do Norte", "region": "nordeste", "bbox": [-38.6, -7.0, -34.95, -4.8]},
+    {"uf": "rs", "name": "Rio Grande do Sul", "region": "sul", "bbox": [-57.65, -33.75, -49.69, -27.08]},
+    {"uf": "ro", "name": "Rondônia", "region": "norte", "bbox": [-66.9, -13.7, -59.7, -7.9]},
+    {"uf": "rr", "name": "Roraima", "region": "norte", "bbox": [-64.9, -1.6, -58.8, 5.3]},
+    {"uf": "sc", "name": "Santa Catarina", "region": "sul", "bbox": [-53.84, -29.35, -48.36, -25.95]},
+    {"uf": "sp", "name": "São Paulo", "region": "sudeste", "bbox": [-53.11, -25.31, -44.16, -19.78]},
+    {"uf": "se", "name": "Sergipe", "region": "nordeste", "bbox": [-38.25, -11.6, -36.4, -9.5]},
+    {"uf": "to", "name": "Tocantins", "region": "norte", "bbox": [-50.8, -13.5, -45.7, -5.1]}
+  ]
+}
