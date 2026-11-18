@@ -54,23 +54,43 @@ jobs:
           if want:
               st = [s for s in st if s["uf"] in want]
           m = 0.15
-          cfg = {"directory": "extracts", "extracts": [
-              {"output": f'{s["uf"]}.osm.pbf', "bbox": [s["bbox"][0] - m, s["bbox"][1] - m, s["bbox"][2] + m, s["bbox"][3] + m]}
-              for s in st]}
-          json.dump(cfg, open("extracts.json", "w"))
+          # A few states per osmium run: cutting all 27 at once needs more memory than the runner has.
+          batch = 4
+          for n in range(0, len(st), batch):
+              cfg = {"directory": "extracts", "extracts": [
+                  {"output": f'{s["uf"]}.osm.pbf', "bbox": [s["bbox"][0] - m, s["bbox"][1] - m, s["bbox"][2] + m, s["bbox"][3] + m]}
+                  for s in st[n:n + batch]]}
+              json.dump(cfg, open(f"extracts-{n // batch:02d}.json", "w"))
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write("matrix=" + json.dumps([s["uf"] for s in st]) + "\n")
           EOF
           mkdir -p extracts
-          osmium extract -c extracts.json -s complete_ways --overwrite brazil.osm.pbf
+          free -h
+          for cfg in extracts-*.json; do
+            echo "== $cfg"
+            osmium extract -c "$cfg" -s complete_ways --overwrite brazil.osm.pbf
+          done
           ls -la extracts
+
+      - name: Overture places (businesses and services)
+        # Optional: if this step fails, the packs are still built with OpenStreetMap places only.
+        continue-on-error: true
+        timeout-minutes: 60
+        env:
+          STATES: ${{ github.event.inputs.states }}
+        run: |
+          python3 -m pip install --break-system-packages "duckdb>=1.1"
+          rel=$(aws s3 ls --no-sign-request s3://overturemaps-us-west-2/release/ | awk '{print $2}' | tr -d / \
+                | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9]+$' | sort | tail -1)
+          echo "Overture release: $rel"
+          python3 pipeline/overture_places.py "$rel" web/data/states.json extracts "$STATES"
 
       - name: Ensure the "maps" release exists
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view maps >/dev/null 2>&1 || gh release create maps --title "Map packs" --latest=false \
-            --notes "Offline map packs for Voli, rebuilt weekly from OpenStreetMap. © OpenStreetMap contributors (ODbL), © OpenMapTiles, Copernicus DEM GLO-90 © DLR e.V. / Airbus, ESA."
+            --notes "Offline map packs for Voli, rebuilt weekly from OpenStreetMap. © OpenStreetMap contributors (ODbL), © OpenMapTiles, Overture Maps Foundation (places), Copernicus DEM GLO-90 © DLR e.V. / Airbus, ESA."
 
       - uses: actions/upload-artifact@v4
         with:
@@ -121,7 +141,7 @@ jobs:
           PLANETILER: planetiler.jar
           PLANETILER_SOURCES: data/sources
           JAVA_MEM: 8g
-        run: bash pipeline/build_state.sh "${{ matrix.uf }}" "extracts/${{ matrix.uf }}.osm.pbf" "${{ needs.extract.outputs.osm_date }}" out
+        run: bash pipeline/build_state.sh "${{ matrix.uf }}" "extracts/${{ matrix.uf }}.osm.pbf" "${{ needs.extract.outputs.osm_date }}" out "extracts/${{ matrix.uf }}.places.jsonl.gz"
 
       - name: Publish to the "maps" release
         env:
@@ -132,7 +152,7 @@ jobs:
 
   manifest:
     needs: build
-    if: always()
+    if: always() && needs.build.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -141,6 +161,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p rel
-          gh release download maps -p "*.release.json" -D rel --clobber
+          # No packs yet (e.g. every state failed): keep the current manifest instead of failing.
+          gh release download maps -p "*.release.json" -D rel --clobber || true
+          if ! ls rel/*.release.json >/dev/null 2>&1; then
+            echo "::warning::No map packs were published in this run, manifest.json left unchanged."
+            exit 0
+          fi
           python3 pipeline/make_manifest.py rel manifest.json
           gh release upload maps --clobber manifest.json
